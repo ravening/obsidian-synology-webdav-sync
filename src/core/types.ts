@@ -47,6 +47,26 @@ export interface RemoteFileListing {
 }
 
 // ---------------------------------------------------------------------------
+// Remote folder listings (Req 1.6, 2.1)
+// ---------------------------------------------------------------------------
+
+/** A single child collection (directory) on the WebDAV server. */
+export interface RemoteFolder {
+  /** Display name (the last path segment), e.g. "Notes". */
+  name: string;
+  /** Server-relative, normalized Folder_Path of this folder, e.g. "vault/Notes". */
+  path: string;
+}
+
+/** The immediate child folders of a single browsed Remote_Folder. */
+export interface RemoteFolderListing {
+  /** The normalized Folder_Path of the folder that was listed. */
+  path: string;
+  /** Immediate child folders only (no files, no self-entry). */
+  folders: RemoteFolder[];
+}
+
+// ---------------------------------------------------------------------------
 // Pending changes / retry queue (Req 8.5)
 // ---------------------------------------------------------------------------
 

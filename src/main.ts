@@ -9,6 +9,7 @@ import { ErrorLog, type ErrorLogState } from "./core/errorLog";
 import { StatusReporter, type StatusBarView } from "./ui/statusReporter";
 import { WebDavSyncSettingTab } from "./ui/settingsTab";
 import { validateSettings } from "./core/validateSettings";
+import { resolveVaultPath } from "./core/vaultPath";
 import { RequestUrlTransport } from "./transport";
 import { WebDAVClient } from "./client";
 import {
@@ -172,6 +173,17 @@ class ObsidianLocalVault implements LocalVault {
 export default class SynologyWebdavSyncPlugin extends Plugin {
   /** Loaded connection settings, or `null` when none are configured yet. */
   private connectionSettings: ConnectionSettings | null = null;
+
+  /**
+   * The loaded Remote Vault Location used as the base path for every remote
+   * operation (Req 5.6). Every request path is resolved against this base via
+   * {@link resolveVaultPath} before a request is issued (Req 5.3, 5.8). The
+   * empty string `""` means the server endpoint root, the default when no
+   * location has been selected (Req 5.5). Read live by the Sync Engine client
+   * wrapper so a location changed after load takes effect on the next remote
+   * operation (Req 5.4).
+   */
+  private vaultBase = "";
 
   /** Persists/loads connection settings via this plugin's data object. */
   private credentialStore!: CredentialStore;
@@ -345,6 +357,12 @@ export default class SynologyWebdavSyncPlugin extends Plugin {
     this.credentialStore = new CredentialStore(this);
     this.connectionSettings = await this.credentialStore.load();
 
+    // Remote Vault Location base path (Req 5.6). Loaded from the credential
+    // store; `""` (the server endpoint root) when none has been selected
+    // (Req 5.5). This becomes the base every remote request path is resolved
+    // against by the Sync Engine client wrapper.
+    this.vaultBase = (await this.credentialStore.loadVaultLocation()) ?? "";
+
     // Retry queue, backed by its own key in the data object (Req 8.7).
     this.retryQueue = new RetryQueue(
       new PluginDataQueueStorage(this, RETRY_QUEUE_KEY),
@@ -368,6 +386,14 @@ export default class SynologyWebdavSyncPlugin extends Plugin {
    * without rebuilding the engine. It reads/writes the vault through
    * {@link ObsidianLocalVault}, gates fetch-on-open on the live settings, and
    * shares the persisted {@link RetryQueue}.
+   *
+   * Every path argument is first resolved against the loaded Remote Vault
+   * Location ({@link vaultBase}) through {@link resolveVaultPath}, so the
+   * resolved path is always a descendant of the base (Req 5.3) and `""`
+   * resolves to the base itself (Req 5.5). A request whose path would escape
+   * the base fails containment: the wrapper reports the failure through the
+   * status reporter / error log and throws *before* any request is issued, so a
+   * traversal can never reach the network (Req 5.8).
    */
   private buildSyncEngine(): SyncEngine {
     const localVault = new ObsidianLocalVault(this);
@@ -384,12 +410,30 @@ export default class SynologyWebdavSyncPlugin extends Plugin {
       return new WebDAVClient(this.connectionSettings, this.transport);
     };
 
+    // Resolve a request path against the live Remote Vault Location base. On a
+    // containment failure (Req 5.8) the failure is routed through the status
+    // reporter (which records it in the shared error log) and an error is
+    // thrown so no request is ever issued.
+    const resolve = (requestPath: string): string => {
+      const result = resolveVaultPath(this.vaultBase, requestPath);
+      if (!result.ok) {
+        const message =
+          `Refused remote request for "${requestPath}": the path would ` +
+          `resolve outside the remote vault location "${this.vaultBase}".`;
+        this.statusReporter.setError(Date.now(), message);
+        throw new Error(message);
+      }
+      return result.path;
+    };
+
     const client: SyncEngineClient = {
-      listTree: (path) => requireClient().listTree(path),
-      getFile: (path) => requireClient().getFile(path),
-      putFile: (path, content) => requireClient().putFile(path, content),
-      deleteFile: (path) => requireClient().deleteFile(path),
-      moveFile: (from, to) => requireClient().moveFile(from, to),
+      listTree: (path) => requireClient().listTree(resolve(path)),
+      getFile: (path) => requireClient().getFile(resolve(path)),
+      putFile: (path, content) =>
+        requireClient().putFile(resolve(path), content),
+      deleteFile: (path) => requireClient().deleteFile(resolve(path)),
+      moveFile: (from, to) =>
+        requireClient().moveFile(resolve(from), resolve(to)),
     };
 
     return new SyncEngine(client, localVault, {

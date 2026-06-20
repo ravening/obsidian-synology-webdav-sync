@@ -21,12 +21,19 @@
  */
 
 import type { ConnectionSettings } from "../core/types";
+import { normalizeFolderPath } from "../core/vaultPath";
 
 /**
  * The key under which the connection settings are stored within the plugin
  * data object.
  */
 export const CONNECTION_SETTINGS_KEY = "connectionSettings";
+
+/**
+ * The key under which the Remote Vault Location {@link Folder_Path} is stored
+ * within the plugin data object (Req 3.2, 5.1).
+ */
+export const VAULT_LOCATION_KEY = "remoteVaultLocation";
 
 /**
  * An injectable persistence backend for the credential store.
@@ -116,5 +123,35 @@ export class CredentialStore {
     const data = await this.store.loadData();
     if (!isRecord(data)) return null;
     return toConnectionSettings(data[CONNECTION_SETTINGS_KEY]);
+  }
+
+  /**
+   * Persist the Remote Vault Location {@link Folder_Path} (Req 3.2, 5.1).
+   *
+   * Reads the existing plugin data object, re-applies {@link normalizeFolderPath}
+   * defensively so the stored form is always canonical (the caller is expected
+   * to have already validated/normalized via `validateFolderPath`, Req 5.7),
+   * updates only the vault-location key, and writes the whole object back so any
+   * other persisted state (connection settings, retry queue, error log) is
+   * preserved (Req 5.4).
+   */
+  async saveVaultLocation(path: string): Promise<void> {
+    const existing = await this.store.loadData();
+    const data: Record<string, unknown> = isRecord(existing)
+      ? { ...existing }
+      : {};
+    data[VAULT_LOCATION_KEY] = normalizeFolderPath(path);
+    await this.store.saveData(data);
+  }
+
+  /**
+   * Load the stored Remote Vault Location {@link Folder_Path}, or `null` when
+   * none has been stored (Req 3.5, 3.7, 5.6).
+   */
+  async loadVaultLocation(): Promise<string | null> {
+    const data = await this.store.loadData();
+    if (!isRecord(data)) return null;
+    const value = data[VAULT_LOCATION_KEY];
+    return typeof value === "string" ? value : null;
   }
 }

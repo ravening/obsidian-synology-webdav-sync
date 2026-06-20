@@ -29,12 +29,14 @@
 import {
   buildPropfindBody,
   joinUrl,
+  parseFolderListing,
   parseMultistatus,
   type ConnectionSettings,
   type ConnectionTestResult,
   type HttpRequest,
   type HttpResponse,
   type RemoteFileListing,
+  type RemoteFolderListing,
   type Transport,
 } from "../core";
 
@@ -271,6 +273,35 @@ export class WebDAVClient {
     this.assertOk(response, "PROPFIND", remotePath);
 
     const result = parseMultistatus(response.text);
+    if (!result.ok) {
+      throw new WebDAVError(
+        "malformed-xml",
+        `Could not parse multistatus response for ${remotePath}.`,
+      );
+    }
+    return result.listing;
+  }
+
+  /**
+   * List the immediate child folders of `remotePath` with a `PROPFIND`
+   * `Depth: 1` request, parsing the multistatus response into a
+   * {@link RemoteFolderListing} via {@link parseFolderListing} (Req 1.5, 2.1).
+   *
+   * Reuses the identical authenticated request path as {@link listDirectory}
+   * (30 s timeout, redirect handling, and `401`→{@link AuthError} mapping); the
+   * only difference is that the body is routed through {@link parseFolderListing}
+   * — which keeps only child *collections* and drops the self-entry — instead
+   * of {@link parseMultistatus}. Throws {@link WebDAVError} `malformed-xml` if
+   * the body is not well-formed XML.
+   */
+  async listFolders(remotePath: string): Promise<RemoteFolderListing> {
+    const response = await this.request("PROPFIND", remotePath, {
+      body: buildPropfindBody(),
+      headers: { Depth: "1", "Content-Type": "application/xml" },
+    });
+    this.assertOk(response, "PROPFIND", remotePath);
+
+    const result = parseFolderListing(response.text, remotePath);
     if (!result.ok) {
       throw new WebDAVError(
         "malformed-xml",

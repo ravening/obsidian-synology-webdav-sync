@@ -240,6 +240,40 @@ export class Setting {
   }
 }
 
+/**
+ * Stub for Obsidian's `Modal`.
+ *
+ * The real `Modal` is supplied by the Obsidian app at runtime; under the test
+ * runner the folder-browser modal (task 10.1) extends this base, so the stub
+ * provides an augmented `contentEl`, the `open()`/`close()` lifecycle that
+ * invokes the `onOpen()`/`onClose()` hooks a subclass overrides, and the
+ * `app`/`titleEl` members the modal touches. It is intentionally minimal:
+ * enough for a subclass to render into `contentEl` and for a test to query the
+ * rendered DOM, but no more.
+ */
+export class Modal {
+  app: App;
+  contentEl: HTMLElement;
+  titleEl: HTMLElement;
+  constructor(app: App) {
+    this.app = app;
+    this.contentEl = augmentEl(document.createElement("div"));
+    this.titleEl = augmentEl(document.createElement("div"));
+  }
+  open(): void {
+    this.onOpen();
+  }
+  close(): void {
+    this.onClose();
+  }
+  onOpen(): void {}
+  onClose(): void {}
+  setTitle(title: string): this {
+    this.titleEl.textContent = title;
+    return this;
+  }
+}
+
 /** Stub for Obsidian's `PluginSettingTab`, providing an augmented `containerEl`. */
 export class PluginSettingTab {
   app: App;

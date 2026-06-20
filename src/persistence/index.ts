@@ -8,5 +8,6 @@
 export {
   CredentialStore,
   CONNECTION_SETTINGS_KEY,
+  VAULT_LOCATION_KEY,
   type DataStore,
 } from "./credentialStore";

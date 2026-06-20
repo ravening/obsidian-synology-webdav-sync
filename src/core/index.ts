@@ -9,6 +9,12 @@
  */
 export * from "./types";
 export { parseMultistatus, render, type ParseResult } from "./responseParser";
+export {
+  parseFolderListing,
+  sortFolders,
+  renderFolderListing,
+  type FolderListingParseResult,
+} from "./folderListing";
 export * from "./conflictName";
 export * from "./decideAction";
 export * from "./urlJoin";
@@ -16,3 +22,5 @@ export * from "./requestBuilder";
 export * from "./retryQueue";
 export * from "./errorLog";
 export * from "./validateSettings";
+export * from "./vaultPath";
+export * from "./folderName";
