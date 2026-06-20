@@ -71,8 +71,22 @@ function lastSegment(path: string): string {
  * Parse a WebDAV `207 Multistatus` document into the immediate child folders of
  * `requestPath`.
  *
+ * Server `<href>` values are absolute — either an absolute path
+ * (`/webdav/Notes/`) or a full URL (`https://nas:5006/webdav/Notes/`) — and
+ * carry the WebDAV mount-point prefix from the configured endpoint. `basePath`
+ * is that endpoint path prefix (e.g. `/webdav`); it is stripped from every href
+ * so the returned folder paths are endpoint-relative (`Notes`, not
+ * `webdav/Notes`). Without this the directory's own self-entry would not match
+ * `requestPath` (so the folder would list itself) and a child path fed back
+ * into a request would double the prefix. When the endpoint has no path
+ * component, pass `""` (the default), which leaves hrefs untouched apart from
+ * normalization.
+ *
  * @param xml the raw response body.
- * @param requestPath the path that was listed (its self-entry is excluded).
+ * @param requestPath the endpoint-relative path that was listed (its self-entry
+ *   is excluded).
+ * @param basePath the endpoint's mount-point path prefix to strip from each
+ *   href (e.g. `new URL(endpoint).pathname`); defaults to `""`.
  * @returns `{ ok: true, listing }` on success, or
  *          `{ ok: false, error: "malformed-xml" }` when `xml` is not
  *          well-formed XML.
@@ -80,12 +94,14 @@ function lastSegment(path: string): string {
 export function parseFolderListing(
   xml: string,
   requestPath: string,
+  basePath = "",
 ): FolderListingParseResult {
   const doc = parseXml(xml);
   if (doc === null) {
     return { ok: false, error: "malformed-xml" };
   }
 
+  const normalizedBase = normalize(basePath);
   const selfPath = normalize(requestPath);
   const root = doc.documentElement;
   // A well-formed but non-multistatus document contains no response entries;
@@ -97,7 +113,7 @@ export function parseFolderListing(
   const folders: RemoteFolder[] = [];
   const responses = descendantsByLocalName(root, "response");
   for (const response of responses) {
-    const folder = parseResponse(response, selfPath);
+    const folder = parseResponse(response, selfPath, normalizedBase);
     if (folder !== null) {
       folders.push(folder);
     }
@@ -107,11 +123,46 @@ export function parseFolderListing(
 }
 
 /**
+ * Convert a raw `<href>` value into an endpoint-relative, normalized folder
+ * path by extracting its path component (dropping any `scheme://host` prefix on
+ * a full-URL href), percent-decoding it, and stripping the endpoint mount-point
+ * prefix `normalizedBase`. Returns the normalized server-relative path.
+ */
+function hrefToRelativePath(rawHref: string, normalizedBase: string): string {
+  // A full-URL href (e.g. "https://nas:5006/webdav/Notes/") — keep only the
+  // path component. An absolute-path href ("/webdav/Notes/") is used as-is.
+  let pathname = rawHref;
+  const schemeMatch = /^[a-z][a-z0-9+.-]*:\/\//i.exec(rawHref);
+  if (schemeMatch !== null) {
+    const afterScheme = rawHref.slice(schemeMatch[0].length);
+    const firstSlash = afterScheme.indexOf("/");
+    pathname = firstSlash === -1 ? "" : afterScheme.slice(firstSlash);
+  }
+
+  let relative = normalize(decodeHref(pathname));
+
+  // Strip the endpoint mount-point prefix so the path is endpoint-relative.
+  if (normalizedBase !== "") {
+    if (relative === normalizedBase) {
+      relative = "";
+    } else if (relative.startsWith(`${normalizedBase}/`)) {
+      relative = relative.slice(normalizedBase.length + 1);
+    }
+  }
+
+  return normalize(relative);
+}
+
+/**
  * Extract a single child {@link RemoteFolder} from a `<response>` element, or
  * `null` when the entry is not a collection, carries no path, or is the
  * directory's own self-entry.
  */
-function parseResponse(response: Element, selfPath: string): RemoteFolder | null {
+function parseResponse(
+  response: Element,
+  selfPath: string,
+  normalizedBase: string,
+): RemoteFolder | null {
   const hrefEl = firstChildByLocalName(response, "href");
   if (hrefEl === null) {
     return null;
@@ -124,9 +175,10 @@ function parseResponse(response: Element, selfPath: string): RemoteFolder | null
   // A trailing slash on the raw href is the fallback collection signal.
   const trailingSlash = rawHref.endsWith("/");
 
-  const path = normalize(decodeHref(rawHref));
+  const path = hrefToRelativePath(rawHref, normalizedBase);
   if (path === "") {
-    // The server endpoint root carries no name and is never a child.
+    // The server endpoint root / listed directory root carries no name and is
+    // never a child (it is the self-entry).
     return null;
   }
 

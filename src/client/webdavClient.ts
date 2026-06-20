@@ -301,7 +301,13 @@ export class WebDAVClient {
     });
     this.assertOk(response, "PROPFIND", remotePath);
 
-    const result = parseFolderListing(response.text, remotePath);
+    // The server returns hrefs carrying the endpoint's mount-point path prefix
+    // (e.g. "/webdav/Notes/"). Pass that prefix so the parser strips it and
+    // returns endpoint-relative folder paths — otherwise the self-entry would
+    // not be dropped and child paths would double the prefix on the next
+    // request.
+    const basePath = this.endpointBasePath();
+    const result = parseFolderListing(response.text, remotePath, basePath);
     if (!result.ok) {
       throw new WebDAVError(
         "malformed-xml",
@@ -309,6 +315,21 @@ export class WebDAVClient {
       );
     }
     return result.listing;
+  }
+
+  /**
+   * The path component of the configured endpoint (its WebDAV mount point),
+   * e.g. `"/webdav"` for `https://nas:5006/webdav`, or `""` when the endpoint
+   * has no path. Used to strip the prefix that the server prepends to every
+   * `<href>` in a listing response. Returns `""` if the endpoint is not a
+   * parseable URL.
+   */
+  private endpointBasePath(): string {
+    try {
+      return new URL(this.settings.endpoint).pathname;
+    } catch {
+      return "";
+    }
   }
 
   /**

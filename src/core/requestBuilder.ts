@@ -18,8 +18,14 @@
  * - the resource path/href (carried by each `<D:response>`'s `<D:href>`),
  *   requested here via the standard `<D:displayname>` property so servers that
  *   omit optional properties still return the resource identity;
- * - `<D:getlastmodified>` — the last-modified time; and
- * - `<D:getcontentlength>` — the size in bytes.
+ * - `<D:getlastmodified>` — the last-modified time;
+ * - `<D:getcontentlength>` — the size in bytes; and
+ * - `<D:resourcetype>` — whether the resource is a collection (directory).
+ *   WebDAV servers return only the properties that are explicitly requested, so
+ *   this MUST be asked for or the response carries no `<collection/>` marker and
+ *   the folder browser cannot tell directories from files (folder listing would
+ *   come back empty). The file-listing parser ignores this property, so adding
+ *   it is safe for the existing directory-listing path.
  *
  * The body is a complete XML document with an explicit declaration so it is
  * well-formed for any conforming WebDAV server (including Synology's).
@@ -34,6 +40,7 @@ export function buildPropfindBody(): string {
     "    <D:displayname/>",
     "    <D:getlastmodified/>",
     "    <D:getcontentlength/>",
+    "    <D:resourcetype/>",
     "  </D:prop>",
     "</D:propfind>",
   ].join("\n");
