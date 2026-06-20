@@ -376,23 +376,37 @@ export class WebDavSyncSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    // Render the fields from empty defaults first so the UI is responsive,
-    // then asynchronously load the stored settings and populate them. A fresh
-    // display starts with no verified snapshot so folder browsing is disabled
-    // until a connection test succeeds for the current settings (Req 1.2).
+    // A fresh display starts with no verified snapshot so folder browsing is
+    // disabled until a connection test succeeds for the current settings
+    // (Req 1.2). The stored settings and vault location are loaded once, then
+    // rendered.
     this.draft = { ...EMPTY_CONNECTION_SETTINGS };
     this.verifiedSettings = null;
     this.chooseFolderButton = null;
-    void this.renderFields();
+    void this.loadAndRender();
   }
 
   /**
-   * Load stored settings, then render the connection fields and save control.
+   * Load the stored connection settings and vault location from the credential
+   * store once, then render. Used on open ({@link display}); re-renders after a
+   * folder selection call {@link render} directly so the in-memory draft is
+   * preserved and never clobbered by a store read (the draft may hold tested-
+   * but-unsaved settings).
    */
-  private async renderFields(): Promise<void> {
+  private async loadAndRender(): Promise<void> {
     this.draft = await loadConnectionSettings(this.store);
     this.currentVaultLocation = await this.store.loadVaultLocation();
+    this.render();
+  }
 
+  /**
+   * Render the connection fields, save/test controls, and the remote vault
+   * location section from the current in-memory state ({@link draft},
+   * {@link currentVaultLocation}, {@link verifiedSettings}). Performs no store
+   * I/O, so it can be called to refresh the UI without discarding unsaved
+   * field edits.
+   */
+  private render(): void {
     const { containerEl } = this;
     containerEl.empty();
 
@@ -541,11 +555,12 @@ export class WebDavSyncSettingTab extends PluginSettingTab {
       this.store,
       (savedPath) => {
         // Reflect the newly persisted Remote_Vault_Location and confirm the
-        // save to the user (Req 3.3). Re-rendering the fields re-reads the
-        // stored location from the credential store.
+        // save to the user (Req 3.3). Re-render synchronously from the in-
+        // memory state so the connection fields keep their current (possibly
+        // tested-but-unsaved) values rather than being reloaded from the store.
         this.currentVaultLocation = savedPath;
         new Notice(VAULT_LOCATION_SAVED_MESSAGE);
-        void this.renderFields();
+        this.render();
       },
     );
     modal.open();

@@ -1,4 +1,97 @@
 /*
  * Styles for the Synology WebDAV Sync plugin.
- * Placeholder - component styles are added as the UI is implemented.
  */
+
+/* ------------------------------------------------------------------ */
+/* Remote folder browser modal                                        */
+/* ------------------------------------------------------------------ */
+
+.wd-folder-browser .wd-fb-breadcrumb {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  padding: 4px 8px;
+  margin-bottom: 8px;
+  background: var(--background-secondary);
+  border-radius: var(--radius-s);
+  overflow-wrap: anywhere;
+}
+
+.wd-folder-browser .wd-fb-error {
+  color: var(--text-error);
+  font-size: var(--font-ui-smaller);
+  margin-bottom: 8px;
+}
+
+.wd-folder-browser .wd-fb-loading {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  margin-bottom: 8px;
+}
+
+.wd-folder-browser .wd-fb-list {
+  max-height: 50vh;
+  overflow-y: auto;
+  margin-bottom: 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+}
+
+.wd-folder-browser .wd-fb-empty {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  padding: 12px;
+  text-align: center;
+}
+
+/* A single clickable navigation row. */
+.wd-folder-browser .wd-fb-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--background-modifier-border);
+  user-select: none;
+}
+
+.wd-folder-browser .wd-fb-row:last-child {
+  border-bottom: none;
+}
+
+.wd-folder-browser .wd-fb-row:hover {
+  background: var(--background-modifier-hover);
+}
+
+.wd-folder-browser .wd-fb-row-disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.wd-folder-browser .wd-fb-row-disabled:hover {
+  background: transparent;
+}
+
+.wd-folder-browser .wd-fb-icon {
+  flex: 0 0 auto;
+  font-size: var(--font-ui-small);
+  line-height: 1;
+}
+
+.wd-folder-browser .wd-fb-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wd-folder-browser .wd-fb-chevron {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: var(--font-ui-medium);
+}
+
+/* The parent-navigation row stands slightly apart from the folder list. */
+.wd-folder-browser .wd-fb-row-parent .wd-fb-name {
+  color: var(--text-muted);
+}

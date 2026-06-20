@@ -1,12 +1,20 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
 import {
   WebDavSyncSettingTab,
   loadConnectionSettings,
   runConnectionTest,
   EMPTY_CONNECTION_SETTINGS,
+  TEST_CONNECTION_LABEL,
+  CHOOSE_REMOTE_FOLDER_LABEL,
   type ConnectionTestClient,
+  type FolderBrowserClientFactory,
 } from "./settingsTab";
+import {
+  FolderBrowserModal,
+  USE_THIS_FOLDER_LABEL,
+} from "./folderBrowserModal";
+import type { FolderBrowserClient } from "./folderBrowserController";
 import {
   CredentialStore,
   type DataStore,
@@ -228,6 +236,118 @@ describe("Settings UI", () => {
 
       resolve(SUCCESS);
       await runPromise;
+    });
+  });
+
+  describe("connection settings survive a folder selection (regression)", () => {
+    /** Click the first enabled button whose visible text equals `label`. */
+    function clickButton(root: HTMLElement, label: string): void {
+      const button = Array.from(
+        root.querySelectorAll<HTMLButtonElement>("button"),
+      ).find((el) => el.textContent === label && !el.disabled);
+      if (button === undefined) {
+        throw new Error(`No enabled button labelled "${label}" was found.`);
+      }
+      button.click();
+    }
+
+    /** Set an input's value and fire the `input` event the stub listens for. */
+    function typeInto(input: HTMLInputElement, value: string): void {
+      input.value = value;
+      input.dispatchEvent(new Event("input"));
+    }
+
+    it("keeps the entered (unsaved) server URL, username, and password after selecting a remote folder", async () => {
+      // Regression: re-rendering after a folder selection must not reload the
+      // draft from the (empty) store, which previously wiped the fields.
+      const store = new CredentialStore(makeDataStore());
+
+      // A connection-test client that always succeeds, so the folder browser
+      // control becomes enabled for the entered settings.
+      const testFactory = (): ConnectionTestClient => ({
+        async testConnection(): Promise<ConnectionTestResult> {
+          return { kind: "success", message: "Connection succeeded." };
+        },
+      });
+
+      // A folder-browser client that lists an empty root and accepts creates.
+      const folderClient: FolderBrowserClient = {
+        async listFolders(path: string) {
+          return { path, folders: [] };
+        },
+        async makeCollection(): Promise<void> {},
+      };
+      const folderFactory: FolderBrowserClientFactory = () => folderClient;
+
+      const tab = new WebDavSyncSettingTab(
+        makeApp(),
+        makePlugin(),
+        store,
+        testFactory,
+        folderFactory,
+      );
+
+      tab.display();
+      await flush();
+
+      // The user types settings into the fields but never clicks "Save".
+      const urlInput = tab.containerEl.querySelector<HTMLInputElement>(
+        'input[type="url"]',
+      )!;
+      const passwordInput = tab.containerEl.querySelector<HTMLInputElement>(
+        'input[type="password"]',
+      )!;
+      const usernameInput = Array.from(
+        tab.containerEl.querySelectorAll<HTMLInputElement>("input"),
+      ).find((el) => el.type !== "url" && el.type !== "password")!;
+
+      typeInto(urlInput, STORED_SETTINGS.endpoint);
+      typeInto(usernameInput, STORED_SETTINGS.username);
+      typeInto(passwordInput, STORED_SETTINGS.password);
+
+      // A successful connection test enables "Choose remote folder".
+      clickButton(tab.containerEl, TEST_CONNECTION_LABEL);
+      await flush();
+
+      // Capture the modal instance opened by the tab so we can drive it.
+      let modal: FolderBrowserModal | undefined;
+      const realOpen = FolderBrowserModal.prototype.open;
+      const openSpy = vi
+        .spyOn(FolderBrowserModal.prototype, "open")
+        .mockImplementation(function (this: FolderBrowserModal) {
+          modal = this;
+          return realOpen.call(this);
+        });
+
+      clickButton(tab.containerEl, CHOOSE_REMOTE_FOLDER_LABEL);
+      await flush();
+
+      expect(modal).toBeDefined();
+
+      // Select the currently-browsed folder (the server root).
+      clickButton(modal!.contentEl, USE_THIS_FOLDER_LABEL);
+      await flush();
+
+      openSpy.mockRestore();
+
+      // The location was persisted.
+      expect(await store.loadVaultLocation()).toBe("");
+
+      // The connection fields, re-rendered after the selection, still hold the
+      // values the user entered — they were not wiped by a store reload.
+      const urlAfter = tab.containerEl.querySelector<HTMLInputElement>(
+        'input[type="url"]',
+      );
+      const passwordAfter = tab.containerEl.querySelector<HTMLInputElement>(
+        'input[type="password"]',
+      );
+      const usernameAfter = Array.from(
+        tab.containerEl.querySelectorAll<HTMLInputElement>("input"),
+      ).find((el) => el.type !== "url" && el.type !== "password");
+
+      expect(urlAfter?.value).toBe(STORED_SETTINGS.endpoint);
+      expect(usernameAfter?.value).toBe(STORED_SETTINGS.username);
+      expect(passwordAfter?.value).toBe(STORED_SETTINGS.password);
     });
   });
 });

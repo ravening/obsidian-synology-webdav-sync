@@ -40,7 +40,7 @@ import {
 export const FOLDER_BROWSER_TITLE = "Choose remote folder";
 
 /** Label of the control that lists the parent folder (Req 2.5). */
-export const PARENT_FOLDER_LABEL = "⬆ Up to parent folder";
+export const PARENT_FOLDER_LABEL = "Parent folder";
 
 /** Indication shown when the browsed folder has no child folders (Req 2.3). */
 export const EMPTY_LISTING_MESSAGE = "This folder contains no subfolders.";
@@ -50,6 +50,9 @@ export const LOADING_MESSAGE = "Loading…";
 
 /** Label of the control that selects the browsed folder (Req 3.1). */
 export const USE_THIS_FOLDER_LABEL = "Use this folder";
+
+/** Label of the control that closes the browser without selecting (Req 3.1). */
+export const CANCEL_LABEL = "Cancel";
 
 /** Label of the control that creates a new child folder (Req 4.1). */
 export const CREATE_FOLDER_LABEL = "Create folder";
@@ -137,37 +140,47 @@ export class FolderBrowserModal extends Modal {
    * Redraw the whole modal body from the controller's current state. Pure view
    * logic — it reads {@link FolderBrowserController.state} and wires events back
    * to the controller; it makes no decisions of its own.
+   *
+   * Child folders (and the parent-navigation entry) are rendered as single
+   * clickable rows — a folder icon, the name, and a chevron — so navigation is
+   * one tap on the row rather than a separate "open" button per folder.
    */
   private render(): void {
     const state = this.controller.state;
     const { contentEl } = this;
     contentEl.empty();
+    contentEl.classList.add("wd-folder-browser");
 
     contentEl.createEl("h2", { text: FOLDER_BROWSER_TITLE });
 
     // Current Folder_Path of the folder being browsed (Req 2.10).
-    contentEl.createEl("p", {
-      text: `Current folder: ${describeCurrentPath(state.currentPath)}`,
+    contentEl.createEl("div", {
+      cls: "wd-fb-breadcrumb",
+      text: describeCurrentPath(state.currentPath),
     });
-
-    // Loading indication while a listing request is in flight (Req 2.6).
-    if (state.loading) {
-      contentEl.createEl("p", { text: LOADING_MESSAGE });
-    }
 
     // Last error message, if any (Req 1.7, 2.7–2.9, 4.7, 4.8).
     if (state.error !== null) {
-      contentEl.createEl("p", { text: state.error });
+      contentEl.createEl("div", { cls: "wd-fb-error", text: state.error });
     }
 
-    // Parent-navigation control, only when a parent exists (Req 2.5).
+    // Loading indication while a listing request is in flight (Req 2.6).
+    if (state.loading) {
+      contentEl.createEl("div", { cls: "wd-fb-loading", text: LOADING_MESSAGE });
+    }
+
+    const list = contentEl.createEl("div", { cls: "wd-fb-list" });
+
+    // Parent-navigation row, only when a parent exists (Req 2.5).
     if (state.currentPath !== "") {
-      new Setting(contentEl).addButton((button) => {
-        button.setButtonText(PARENT_FOLDER_LABEL);
-        button.setDisabled(state.loading);
-        button.onClick(() => {
+      this.renderRow(list, {
+        icon: "↑",
+        label: PARENT_FOLDER_LABEL,
+        cls: "wd-fb-row wd-fb-row-parent",
+        disabled: state.loading,
+        onClick: () => {
           void this.runListing(this.controller.navigateToParent());
-        });
+        },
       });
     }
 
@@ -175,16 +188,19 @@ export class FolderBrowserModal extends Modal {
     // empty-state indication when there are none (Req 2.3).
     if (state.folders.length === 0) {
       if (!state.loading) {
-        contentEl.createEl("p", { text: EMPTY_LISTING_MESSAGE });
+        list.createEl("div", { cls: "wd-fb-empty", text: EMPTY_LISTING_MESSAGE });
       }
     } else {
       for (const folder of state.folders) {
-        new Setting(contentEl).setName(folder.name).addButton((button) => {
-          button.setButtonText(`Open ${folder.name}`);
-          button.setDisabled(state.loading);
-          button.onClick(() => {
+        this.renderRow(list, {
+          icon: "📁",
+          label: folder.name,
+          chevron: true,
+          cls: "wd-fb-row wd-fb-row-folder",
+          disabled: state.loading,
+          onClick: () => {
             void this.runListing(this.controller.navigate(folder.path));
-          });
+          },
         });
       }
     }
@@ -208,15 +224,52 @@ export class FolderBrowserModal extends Modal {
         });
       });
 
-    // Select the folder currently being browsed as the Remote_Vault_Location
-    // (Req 3.1). Always enabled while a folder is being browsed.
-    new Setting(contentEl).addButton((button) => {
-      button.setButtonText(USE_THIS_FOLDER_LABEL);
-      button.setCta();
-      button.onClick(() => {
-        void this.handleUseThisFolder();
+    // Action row: select the folder currently being browsed as the
+    // Remote_Vault_Location (Req 3.1), or cancel without selecting.
+    new Setting(contentEl)
+      .addButton((button) => {
+        button.setButtonText(CANCEL_LABEL);
+        button.onClick(() => {
+          this.close();
+        });
+      })
+      .addButton((button) => {
+        button.setButtonText(USE_THIS_FOLDER_LABEL);
+        button.setCta();
+        button.onClick(() => {
+          void this.handleUseThisFolder();
+        });
       });
-    });
+  }
+
+  /**
+   * Render a single clickable navigation row (a folder icon, a label, and an
+   * optional trailing chevron). The whole row is the click target; while a
+   * listing is in flight the row is marked disabled and does not navigate
+   * (the controller's single-flight guard would no-op anyway, Req 2.6).
+   */
+  private renderRow(
+    parent: HTMLElement,
+    opts: {
+      icon: string;
+      label: string;
+      cls: string;
+      disabled: boolean;
+      chevron?: boolean;
+      onClick: () => void;
+    },
+  ): void {
+    const row = parent.createEl("div", { cls: opts.cls });
+    row.createEl("span", { cls: "wd-fb-icon", text: opts.icon });
+    row.createEl("span", { cls: "wd-fb-name", text: opts.label });
+    if (opts.chevron === true) {
+      row.createEl("span", { cls: "wd-fb-chevron", text: "›" });
+    }
+    if (opts.disabled) {
+      row.classList.add("wd-fb-row-disabled");
+      return;
+    }
+    row.addEventListener("click", opts.onClick);
   }
 
   /**

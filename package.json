@@ -1,6 +1,6 @@
 {
   "name": "obsidian-synology-webdav-sync",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Synchronize an Obsidian vault with a Synology NAS WebDAV server.",
   "main": "main.js",
   "scripts": {
