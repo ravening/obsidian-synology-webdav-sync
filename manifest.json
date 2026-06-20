@@ -1,7 +1,7 @@
 {
   "id": "obsidian-synology-webdav-sync",
   "name": "Synology WebDAV Sync",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "minAppVersion": "1.4.0",
   "description": "Synchronize your Obsidian vault with a Synology NAS WebDAV server. A free, self-hosted alternative to paid sync services, working on desktop and mobile.",
   "author": "obsidian-synology-webdav-sync",
